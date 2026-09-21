@@ -8,6 +8,34 @@ OUT = "data/latest/brico_be.jsonl"
 
 
 def fetch_url_list(limit=None):
+    """Category sitemaps -> category pages -> product URLs from HTML."""
+    idx = get(f"{BASE}/sitemap.xml")
+    files = [u for u in re.findall(r"<loc>([^<]+)</loc>", idx) if "category" in u]
+    urls = []
+    seen = set()
+    for f in files[:4]:
+        try:
+            xml = get(f if f.startswith("http") else BASE + f)
+        except Exception:
+            continue
+        cats = re.findall(r"<loc>(https://www\.brico\.be/(?:fr|nl)/[^<]+)</loc>", xml)
+        for cat in cats[:5]:
+            try:
+                ch = get(cat)
+            except Exception:
+                continue
+            us = re.findall(r'href="(https://www\.brico\.be/(?:fr|nl)/[^"]+/\d+[^"]*\.html)"', ch)
+            for u in us:
+                if u not in seen:
+                    seen.add(u)
+                    urls.append(u)
+            if limit and len(urls) >= limit:
+                break
+        if limit and len(urls) >= limit:
+            break
+    return urls[:limit] if limit else urls
+
+def _old_fetch(limit=None):
     idx = get(f"{BASE}/sitemap.xml")
     files = re.findall(r"<loc>([^<]+)</loc>", idx)
     urls = []
