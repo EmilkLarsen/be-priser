@@ -1,79 +1,71 @@
-"""Brico.be (EUR, Belgium) — sitemap index has /{fr,nl}/category/sitemap.xml
-per language. Product URLs discovered from category pages; ld+json price."""
+"""Brico/BricoPlanète (EUR, Belgium — fr + nl shops).
+
+Product sitemaps: /fr/bricoproductpagessitemapindex<N>.xml and /nl/...
+(5 indexes each, 50k URLs per file, verified 2026-09-24). Every URL in these
+files is a real product page; product URLs end with /<sku>.
+
+Product pages: JSON blob "price": 8.49 with adjacent "priceCurrency":"EUR"
+(verified; no itemprop). og:image on cloudfront, title in <title>.
+"""
 import re
-from common import get, sane_price, valid_ean, first_str, ldjson_products, offer_from_ld, write_jsonl, scrape_urls
+from common import get, sane_price, write_jsonl, scrape_urls
 
 BASE = "https://www.brico.be"
 OUT = "data/latest/brico_be.jsonl"
 
 
 def fetch_url_list(limit=None):
-    """Category sitemaps -> category pages -> product URLs from HTML."""
-    idx = get(f"{BASE}/sitemap.xml")
-    files = [u for u in re.findall(r"<loc>([^<]+)</loc>", idx) if "category" in u]
     urls = []
     seen = set()
-    for f in files[:4]:
-        try:
-            xml = get(f if f.startswith("http") else BASE + f)
-        except Exception:
-            continue
-        cats = re.findall(r"<loc>(https://www\.brico\.be/(?:fr|nl)/[^<]+)</loc>", xml)
-        for cat in cats[:5]:
+    for lang in ("fr", "nl"):
+        for i in range(1, 7):
             try:
-                ch = get(cat)
+                xml = get(f"{BASE}/{lang}/bricoproductpagessitemapindex{i}.xml")
             except Exception:
-                continue
-            us = re.findall(r'href="(https://www\.brico\.be/(?:fr|nl)/[^"]+/\d+[^"]*\.html)"', ch)
-            for u in us:
-                if u not in seen:
-                    seen.add(u)
-                    urls.append(u)
+                break
+            for u in re.findall(r"<loc>([^<]+)</loc>", xml):
+                u = u.strip()
+                if u in seen or not re.search(r"/\d{5,9}/?$", u):
+                    continue
+                seen.add(u)
+                urls.append(u)
             if limit and len(urls) >= limit:
                 break
         if limit and len(urls) >= limit:
             break
     return urls[:limit] if limit else urls
 
-def _old_fetch(limit=None):
-    idx = get(f"{BASE}/sitemap.xml")
-    files = re.findall(r"<loc>([^<]+)</loc>", idx)
-    urls = []
-    for f in files:
-        try:
-            xml = get(f if f.startswith("http") else BASE + f)
-        except Exception:
-            continue
-        # product URLs end in a slug pattern with digits
-        us = re.findall(r'<loc>(https://www\.brico\.be/(?:fr|nl)/[^<]+/\d+[^<]*)</loc>', xml)
-        urls.extend(us)
-        if limit and len(urls) >= limit:
-            break
-    return urls[:limit] if limit else urls
-
 
 def handle(u, html):
-    rows = []
-    for p in ldjson_products(html):
-        off = offer_from_ld(p)
-        if off:
-            off["price"] = sane_price(off["price"])
-        if not off or not off["price"]:
-            continue
-        rows.append({
-            "chain": "brico_be",
-            "country": "be",
-            "currency": off["currency"],
-            "sku": u.rstrip("/").rsplit("/", 1)[-1],
-            "ean": valid_ean(p.get("gtin13") or p.get("gtin") or p.get("ean")),
-            "name": p.get("name"),
-            "url": u,
-            "price": off["price"],
-            "in_stock": off["in_stock"],
-            "image": first_str(p.get("image")),
-        })
-        break
-    return rows
+    # price anchored to priceCurrency within a small window (the page's JSON
+    # is compact; currency may sit up to ~120 chars after the price key)
+    m = re.search(r'"price"\s*:\s*"?([0-9]+(?:[.,][0-9]{1,2})?)"?'
+                  r'[^{}]{0,120}?"priceCurrency"\s*:\s*"(?:EUR|€)"', html)
+    if not m and '"priceCurrency"' in html:
+        # currency present but far away — take the first plain price key
+        m = re.search(r'"price"\s*:\s*"?([0-9]+(?:[.,][0-9]{1,2})?)"?', html)
+    if not m:
+        return []
+    p = sane_price(float(m.group(1).replace(",", ".")))
+    if not p:
+        return []
+    skm = re.search(r"/(\d{5,9})/?$", u)
+    img = re.search(r'property="og:image"\s+content="([^"]+)"', html)
+    t = re.search(r"<title[^>]*>([^<]+)</title>", html)
+    name = (t.group(1).strip() if t else u.rsplit("/", 1)[-1])
+    ean = re.search(r'"gtin\d*"\s*:\s*"?(\d{8,14})"?', html)
+    return [{
+        "chain": "brico_be",
+        "country": "be",
+        "currency": "EUR",
+        "sku": skm.group(1) if skm else None,
+        "ean": ean.group(1) if ean else None,
+        "name": name,
+        "url": u,
+        "price": p,
+        "in_stock": None,
+        "image": img.group(1).strip() if img else None,
+    }]
 
 
 def scrape(limit=None):
