@@ -2,11 +2,11 @@
  "date": "2026-10-08",
  "chains": {
   "brico_be": {
-   "products": 168921,
+   "products": 173453,
    "price_changes": 51,
    "suspicious_changes": 0,
    "expired": 0,
-   "seconds": 18052.1
+   "seconds": 18054.6
   }
  }
 }
