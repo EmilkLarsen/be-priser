@@ -1,13 +1,13 @@
 {
  "date": "2026-10-25",
- "total_rows": 278454,
+ "total_rows": 278502,
  "chains": {
   "brico_be": {
-   "products": 431607,
-   "price_changes": 16706,
-   "suspicious_changes": 46,
+   "products": 436098,
+   "price_changes": 17162,
+   "suspicious_changes": 48,
    "expired": 0,
-   "seconds": 18095.3
+   "seconds": 18056.0
   }
  }
 }
